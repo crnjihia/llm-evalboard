@@ -50,11 +50,13 @@ jobs:
       - name: Type check
         run: pnpm run typecheck
 
-      - name: Run unit & placeholder tests
-        run: pnpm run test
-
       - name: Verify database migration
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/evalboard
         run: pnpm run db:migrate
+
+      - name: Run unit & integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/evalboard
+        run: pnpm run test
 
