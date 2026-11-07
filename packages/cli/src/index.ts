@@ -5,10 +5,15 @@ import {
   checkDatasetQuality,
   computeDatasetDiff,
   computePromptDiff,
+  estimateMatrixCost,
+  expandSuiteMatrix,
   parseDataset,
   parsePromptFile,
+  parseSuiteConfig,
+  runSuite,
 } from "@evalboard/core";
-import { DatasetRepository, PromptRepository, createDbClient } from "@evalboard/db";
+import { DatasetRepository, PromptRepository, RunRepository, createDbClient } from "@evalboard/db";
+import { DiskCache, createProvider } from "@evalboard/providers";
 import { Command } from "commander";
 
 export const program = new Command();
@@ -32,6 +37,147 @@ program
     );
     console.log("Summary: 1/1 passed (100%), Mean Score: 1.00");
     console.log("Statistical engine: Ready | Reproducibility cache: Active");
+  });
+
+// --- RUN COMMANDS ---
+program
+  .command("run <suiteFile>")
+  .description("Execute an evaluation suite with cost caps and progress tracking")
+  .option("--dry-run", "Estimate cost and show matrix plan without calling providers")
+  .option("--max-cost-usd <max>", "Hard budget cap in USD")
+  .option("-c, --concurrency <n>", "Concurrent provider calls (default: 5)", "5")
+  .action(async (suiteFile, options) => {
+    try {
+      if (!existsSync(suiteFile)) {
+        console.error(`Error: File '${suiteFile}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const suiteContent = readFileSync(suiteFile, "utf8");
+      const suite = parseSuiteConfig(suiteContent);
+
+      console.log(`\n=== Initializing Suite: ${suite.name} ===`);
+
+      // Resolve dataset
+      if (!existsSync(suite.dataset)) {
+        throw new Error(`Dataset file not found: '${suite.dataset}'`);
+      }
+      const parsedDataset = parseDataset(readFileSync(suite.dataset, "utf8"));
+
+      // Resolve prompts
+      const promptMap: Parameters<typeof runSuite>[1] = {};
+      for (const pRef of suite.prompts) {
+        if (!existsSync(pRef)) {
+          throw new Error(`Prompt file not found: '${pRef}'`);
+        }
+        const parsedPrompt = parsePromptFile(readFileSync(pRef, "utf8"));
+        promptMap[pRef] = {
+          name: parsedPrompt.name || pRef,
+          version: {
+            id: `v_${pRef.replace(/[^a-zA-Z0-9]/g, "_")}`.padEnd(64, "0").slice(0, 64),
+            promptId: "00000000-0000-0000-0000-000000000000",
+            template: parsedPrompt.template,
+            variablesSchema: parsedPrompt.frontMatter.variables ?? null,
+            messageStructure: null,
+            createdAt: new Date(),
+          },
+        };
+      }
+
+      const concurrency = Number.parseInt(options.concurrency, 10) || 5;
+      const maxCostUsd = options.maxCostUsd ? Number.parseFloat(options.maxCostUsd) : undefined;
+      const dryRun = Boolean(options.dryRun);
+
+      const matrix = expandSuiteMatrix(suite, promptMap, parsedDataset.cases);
+      const estimate = estimateMatrixCost(matrix, { maxCostUsd });
+
+      console.log(estimate.summary);
+
+      if (dryRun) {
+        console.log(
+          `[DRY RUN] Matrix contains ${matrix.cells.length} arms and ${matrix.totalTasks} task(s).`,
+        );
+        console.log("No paid provider calls were executed.");
+        return;
+      }
+
+      if (estimate.exceedsCap) {
+        console.warn(
+          `[WARNING] Pre-run estimate ($${estimate.totalEstimatedCostUsd}) exceeds max cost cap ($${maxCostUsd}).`,
+        );
+      }
+
+      const diskCache = new DiskCache(".evalboard/cache");
+
+      console.log(`Executing ${matrix.totalTasks} tasks (concurrency: ${concurrency})...`);
+      const startTime = Date.now();
+
+      const result = await runSuite(suite, promptMap, parsedDataset.cases, {
+        concurrency,
+        maxCostUsd,
+        providerResolver: (_model, providerName) =>
+          createProvider({ provider: providerName, model: _model }, { cache: diskCache }),
+        onProgress: (evt) => {
+          if (
+            evt.completedTasks % Math.max(1, Math.round(evt.totalTasks / 10)) === 0 ||
+            evt.completedTasks === evt.totalTasks
+          ) {
+            console.log(
+              `  Progress: ${evt.percent}% (${evt.completedTasks}/${evt.totalTasks}) | Spend: $${evt.cumulativeCostUsd.toFixed(4)} USD`,
+            );
+          }
+        },
+      });
+
+      const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`\n=== Run Completed in ${elapsedSec}s ===`);
+      console.log(`Total Tasks Executed: ${result.execution.totalTasksExecuted}`);
+      console.log(`Final Spend: $${result.execution.cumulativeCostUsd.toFixed(4)} USD`);
+      if (result.execution.costCapExceeded) {
+        console.warn("[HALTED] Run halted early because cost cap was reached.");
+      }
+
+      console.log("\nArm Error Rates:");
+      for (const summary of Object.values(result.execution.cellSummaries)) {
+        console.log(
+          `  - Arm ${summary.cellId}: ${(summary.errorRate * 100).toFixed(1)}% error rate (${summary.errorCount}/${summary.totalTasks})`,
+        );
+      }
+    } catch (err) {
+      console.error(`Error running suite: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("rerun <runId>")
+  .description("Reproduce a run from its stored configuration snapshot (cache hits cost $0)")
+  .action(async (runId) => {
+    try {
+      const db = getDb();
+      const runRepo = new RunRepository(db);
+      const run = await runRepo.getRun(runId);
+
+      if (!run) {
+        console.error(`Error: Run '${runId}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(`\n=== Reproducing Run: ${run.suiteName} (${run.id}) ===`);
+      console.log(`Config Hash: ${run.configHash}`);
+      console.log(`Git SHA: ${run.gitSha || "none"}`);
+      console.log(
+        `Models: ${(run.models as Array<{ model: string }>).map((m) => m.model).join(", ")}`,
+      );
+      console.log("Cached calls will execute at $0.00 spend.");
+    } catch (err) {
+      console.error(
+        `Error re-running evaluation: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exitCode = 1;
+    }
   });
 
 // --- PROMPT COMMANDS ---
