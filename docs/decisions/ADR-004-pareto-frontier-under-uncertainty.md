@@ -37,3 +37,4 @@ We adopt **Option 3: Three-Tiered Pareto Classification under Uncertainty**:
 - Prevents engineering teams from making expensive architectural decisions based on noise.
 - Transparently distinguishes between proven cost-quality trade-offs and statistically ambiguous results.
 - Feeds directly into power analysis: users can click on an `UNCERTAIN` configuration to see how many additional test cases are needed to prove whether it belongs on the frontier.
+

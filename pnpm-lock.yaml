@@ -266,6 +266,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@evalboard/stats':
+        specifier: workspace:*
+        version: link:../stats
       diff:
         specifier: ^9.0.0
         version: 9.0.0
@@ -413,10 +416,6 @@ importers:
         version: 3.2.7(@types/node@22.20.5)(yaml@2.9.1)
 
   packages/stats:
-    dependencies:
-      '@evalboard/core':
-        specifier: workspace:*
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^22.13.9

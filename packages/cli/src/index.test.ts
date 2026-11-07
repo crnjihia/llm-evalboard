@@ -124,4 +124,15 @@ describe("cli prompt and dataset commands", () => {
       logSpy.mockRestore();
     }
   });
+
+  it("registers compare command with delta and baseline options", () => {
+    const compareCmd = program.commands.find((c) => c.name() === "compare");
+    expect(compareCmd).toBeDefined();
+    expect(compareCmd?.description()).toContain("Compare cells of an evaluation run");
+    const optionFlags = compareCmd?.options.map((o) => o.flags);
+    expect(optionFlags).toContain("-b, --baseline <cellId>");
+    expect(optionFlags).toContain("-c, --candidate <cellId>");
+    expect(optionFlags).toContain("-d, --delta <number>");
+    expect(optionFlags).toContain("-s, --seed <number>");
+  });
 });

@@ -122,3 +122,4 @@ Time-varying control limits based on baseline historical variance $\sigma_0$:
 $$UCL_t = \mu_0 + L \cdot \sigma_0 \sqrt{\frac{\lambda}{2 - \lambda} \left[1 - (1 - \lambda)^{2t}\right]}$$
 $$LCL_t = \mu_0 - L \cdot \sigma_0 \sqrt{\frac{\lambda}{2 - \lambda} \left[1 - (1 - \lambda)^{2t}\right]}$$
 A drop below $LCL_t$ ($L = 3$) immediately triggers a `critical` regression alert.
+
