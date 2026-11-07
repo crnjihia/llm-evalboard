@@ -13,6 +13,11 @@ import {
   runSuite,
 } from "@evalboard/core";
 import { DatasetRepository, PromptRepository, RunRepository, createDbClient } from "@evalboard/db";
+import {
+  BUILTIN_DETERMINISTIC_GRADERS,
+  createGrader,
+  listCustomGraderTypes,
+} from "@evalboard/graders";
 import { DiskCache, createProvider } from "@evalboard/providers";
 import { Command } from "commander";
 
@@ -472,6 +477,69 @@ datasetCmd
       console.log(`\nStatus: ${report.isHealthy ? "HEALTHY" : "NEEDS ATTENTION"}`);
     } catch (err) {
       console.error(`Error checking dataset: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+// --- GRADE COMMANDS ---
+const gradeCmd = program.command("grade").description("Test and inspect evaluation graders");
+
+gradeCmd
+  .command("list")
+  .description("List available deterministic and custom grader types")
+  .action(() => {
+    console.log("\n=== Available Built-in Deterministic Graders ===");
+    for (const type of BUILTIN_DETERMINISTIC_GRADERS) {
+      console.log(`  - ${type}`);
+    }
+
+    const customTypes = listCustomGraderTypes();
+    if (customTypes.length > 0) {
+      console.log("\n=== Registered Custom Graders ===");
+      for (const ct of customTypes) {
+        console.log(`  - ${ct}`);
+      }
+    }
+  });
+
+gradeCmd
+  .command("test <graderType>")
+  .description("Test a grader against a sample output and expected value")
+  .option("-c, --config <jsonOrFile>", "Grader configuration JSON or JSON file path", "{}")
+  .requiredOption("-o, --output <string>", "Candidate LLM output text")
+  .option("-e, --expected <string>", "Expected target value")
+  .action(async (graderType, options) => {
+    try {
+      let configObj: Record<string, unknown> = {};
+      const rawCfg = options.config;
+
+      if (existsSync(rawCfg)) {
+        configObj = JSON.parse(readFileSync(rawCfg, "utf8"));
+      } else {
+        configObj = JSON.parse(rawCfg);
+      }
+
+      const grader = createGrader(graderType, configObj);
+      const result = await grader.grade({
+        case: {
+          input: {},
+          expected: options.expected,
+        },
+        output: options.output,
+      });
+
+      console.log(`\n=== Grader Test: ${graderType} ===`);
+      console.log(`Version ID: ${grader.versionId}`);
+      console.log(`Verdict:    ${result.pass ? "PASS" : "FAIL"}`);
+      console.log(`Score:      ${result.score}`);
+      console.log(`Reason:     ${result.reason}`);
+
+      if (result.details) {
+        console.log("\nDetails:");
+        console.log(JSON.stringify(result.details, null, 2));
+      }
+    } catch (err) {
+      console.error(`Grader test failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;
     }
   });

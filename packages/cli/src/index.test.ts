@@ -63,4 +63,43 @@ describe("cli prompt and dataset commands", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("lists available built-in deterministic graders via grade list", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync(["node", "evalboard", "grade", "list"]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(logged).toContain("=== Available Built-in Deterministic Graders ===");
+      expect(logged).toContain("- exact");
+      expect(logged).toContain("- regex");
+      expect(logged).toContain("- json-schema");
+      expect(logged).toContain("- numeric");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("tests a grader from cli via grade test", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "grade",
+        "test",
+        "exact",
+        "-o",
+        "hello",
+        "-e",
+        "hello",
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(logged).toContain("=== Grader Test: exact ===");
+      expect(logged).toContain("Verdict:    PASS");
+      expect(logged).toContain("Score:      1");
+      expect(logged).toContain("Reason:     Exact match succeeded");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });

@@ -11,7 +11,7 @@ import {
 const DATABASE_URL =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5435/evalboard";
 
-describe("database repositories and immutability (Phase 1 Acceptance Criteria)", () => {
+describe("database repositories and immutability (Phase 1 Acceptance Criteria)", { timeout: 20000 }, () => {
   let db: ReturnType<typeof createDbClient>;
   let promptRepo: PromptRepository;
   let datasetRepo: DatasetRepository;
