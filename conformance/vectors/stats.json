@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "1.0",
+  "generator": "independent-python-stats",
+  "wilson": [
+    {
+      "successes": 95,
+      "total": 100,
+      "confidence": 0.95,
+      "expected": {
+        "proportion": 0.95,
+        "lower": 0.88825,
+        "upper": 0.978456,
+        "confidence": 0.95
+      }
+    },
+    {
+      "successes": 50,
+      "total": 100,
+      "confidence": 0.95,
+      "expected": {
+        "proportion": 0.5,
+        "lower": 0.403832,
+        "upper": 0.596168,
+        "confidence": 0.95
+      }
+    },
+    {
+      "successes": 0,
+      "total": 50,
+      "confidence": 0.95,
+      "expected": {
+        "proportion": 0.0,
+        "lower": 0.0,
+        "upper": 0.071348,
+        "confidence": 0.95
+      }
+    },
+    {
+      "successes": 38,
+      "total": 40,
+      "confidence": 0.99,
+      "expected": {
+        "proportion": 0.95,
+        "lower": 0.781781,
+        "upper": 0.990174,
+        "confidence": 0.99
+      }
+    }
+  ],
+  "mcnemar": [
+    {
+      "b": 2,
+      "c": 12,
+      "expected": {
+        "p_value": 0.012939,
+        "b": 2,
+        "c": 12
+      }
+    },
+    {
+      "b": 5,
+      "c": 5,
+      "expected": {
+        "p_value": 1.0,
+        "b": 5,
+        "c": 5
+      }
+    },
+    {
+      "b": 0,
+      "c": 8,
+      "expected": {
+        "p_value": 0.007812,
+        "b": 0,
+        "c": 8
+      }
+    },
+    {
+      "b": 10,
+      "c": 25,
+      "expected": {
+        "p_value": 0.016674,
+        "b": 10,
+        "c": 25
+      }
+    }
+  ],
+  "anova": {
+    "cases_data": [
+      [0.85, 0.88, 0.82],
+      [0.92, 0.95, 0.9],
+      [0.4, 0.45, 0.38],
+      [0.65, 0.6, 0.7],
+      [0.1, 0.15, 0.12]
+    ],
+    "expected": {
+      "k_cases": 5,
+      "m_repeats": 3,
+      "msb": 0.32436,
+      "msw": 0.001193,
+      "var_between": 0.107722,
+      "var_within": 0.001193,
+      "icc": 0.989043,
+      "pct_model_noise": 1.1,
+      "pct_case_variance": 98.9
+    }
+  },
+  "power": [
+    {
+      "std_diff": 0.15,
+      "delta": 0.03,
+      "alpha": 0.05,
+      "power": 0.8,
+      "expected": {
+        "std_diff": 0.15,
+        "delta": 0.03,
+        "alpha": 0.05,
+        "power": 0.8,
+        "n_required": 197
+      }
+    },
+    {
+      "std_diff": 0.08,
+      "delta": 0.03,
+      "alpha": 0.05,
+      "power": 0.8,
+      "expected": {
+        "std_diff": 0.08,
+        "delta": 0.03,
+        "alpha": 0.05,
+        "power": 0.8,
+        "n_required": 56
+      }
+    },
+    {
+      "std_diff": 0.2,
+      "delta": 0.05,
+      "alpha": 0.01,
+      "power": 0.9,
+      "expected": {
+        "std_diff": 0.2,
+        "delta": 0.05,
+        "alpha": 0.01,
+        "power": 0.9,
+        "n_required": 239
+      }
+    }
+  ],
+  "multipleComparisons": {
+    "raw_p_values": [0.001, 0.012, 0.035, 0.048, 0.12, 0.65],
+    "expected_holm": [0.006, 0.06, 0.14, 0.144, 0.24, 0.65],
+    "expected_bh": [0.006, 0.036, 0.07, 0.072, 0.144, 0.65]
+  }
+}

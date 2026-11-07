@@ -49,3 +49,11 @@ export class SeededPRNG {
     return result;
   }
 }
+
+/**
+ * Convenience helper returning a deterministic next() function in [0, 1).
+ */
+export function createPrng(seed: number | string = 42): () => number {
+  const prng = new SeededPRNG(seed);
+  return () => prng.next();
+}
