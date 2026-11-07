@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.0",
+  "generator": "sklearn.metrics.cohen_kappa_score",
+  "vectors": [
+    {
+      "id": "binary_perfect",
+      "description": "Perfect agreement on binary scale (10 items)",
+      "human": [1, 0, 1, 1, 0, 1, 0, 0, 1, 0],
+      "judge": [1, 0, 1, 1, 0, 1, 0, 0, 1, 0],
+      "expected_kappa_unweighted": 1.0,
+      "expected_confusion_matrix": [[5, 0], [0, 5]],
+      "raw_agreement": 1.0
+    },
+    {
+      "id": "binary_partial",
+      "description": "Partial agreement on binary scale (10 items)",
+      "human": [1, 1, 1, 0, 0, 0, 1, 0, 1, 0],
+      "judge": [1, 1, 0, 0, 1, 0, 1, 0, 0, 0],
+      "expected_kappa_unweighted": 0.4,
+      "expected_confusion_matrix": [[4, 1], [2, 3]],
+      "raw_agreement": 0.7
+    },
+    {
+      "id": "ordinal_5point",
+      "description": "5-point Likert scale (1-5) evaluation with linear & quadratic weights",
+      "labels": [1, 2, 3, 4, 5],
+      "human": [1, 2, 3, 4, 5, 2, 3, 4, 3, 5, 1, 2, 4, 5, 3],
+      "judge": [1, 2, 2, 4, 5, 3, 3, 5, 3, 4, 1, 1, 4, 5, 2],
+      "expected_kappa_unweighted": 0.5,
+      "expected_kappa_linear": 0.7413793103448276,
+      "expected_kappa_quadratic": 0.8928571428571429,
+      "expected_confusion_matrix": [
+        [2, 0, 0, 0, 0],
+        [1, 1, 1, 0, 0],
+        [0, 2, 2, 0, 0],
+        [0, 0, 0, 2, 1],
+        [0, 0, 0, 1, 2]
+      ],
+      "raw_agreement": 0.6
+    },
+    {
+      "id": "binary_inverted",
+      "description": "Complete disagreement (kappa = -1.0)",
+      "human": [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+      "judge": [0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+      "expected_kappa_unweighted": -1.0,
+      "expected_confusion_matrix": [[0, 5], [5, 0]],
+      "raw_agreement": 0.0
+    },
+    {
+      "id": "nominal_3class",
+      "description": "3-class nominal scale ('bird', 'cat', 'dog')",
+      "labels": ["bird", "cat", "dog"],
+      "human": ["cat", "dog", "bird", "cat", "dog", "cat", "bird", "bird", "dog", "dog"],
+      "judge": ["cat", "dog", "cat", "cat", "dog", "cat", "dog", "bird", "dog", "cat"],
+      "expected_kappa_unweighted": 0.5454545454545454,
+      "expected_confusion_matrix": [[1, 1, 1], [0, 3, 0], [0, 1, 3]],
+      "raw_agreement": 0.7
+    }
+  ]
+}

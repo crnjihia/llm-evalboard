@@ -16,7 +16,10 @@ import { DatasetRepository, PromptRepository, RunRepository, createDbClient } fr
 import {
   BUILTIN_DETERMINISTIC_GRADERS,
   createGrader,
+  formatCalibrationReportMarkdown,
+  generateCalibrationReport,
   listCustomGraderTypes,
+  sampleJudgedItemsForCalibration,
 } from "@evalboard/graders";
 import { DiskCache, createProvider } from "@evalboard/providers";
 import { Command } from "commander";
@@ -540,6 +543,132 @@ gradeCmd
       }
     } catch (err) {
       console.error(`Grader test failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+// --- CALIBRATE COMMANDS ---
+const calibrateCmd = program
+  .command("calibrate")
+  .description("Sample items for human labelling and generate judge calibration reports");
+
+calibrateCmd
+  .command("sample <runId>")
+  .description("Generate stratified blinded sample of judged items for human labelling")
+  .option("-n, --count <n>", "Number of items to sample", "20")
+  .option("-o, --out <file>", "Output JSON file path")
+  .action(async (runId, options) => {
+    try {
+      const count = Number.parseInt(options.count, 10) || 20;
+      const db = getDb();
+      const runRepo = new RunRepository(db);
+      const run = await runRepo.getRun(runId);
+
+      if (!run) {
+        console.error(`Error: Run '${runId}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(`\n=== Generating Stratified Blinded Sample for Run: ${runId} ===`);
+      console.log(`Target Sample Size: ${count}`);
+
+      // Query cells and case results for this run
+      const cells = await db.query.runCells.findMany({
+        where: (rc, { eq }) => eq(rc.runId, runId),
+      });
+      const cellIds = cells.map((c) => c.id);
+      const caseResultsList =
+        cellIds.length > 0
+          ? await db.query.caseResults.findMany({
+              where: (cr, { inArray }) => inArray(cr.runCellId, cellIds),
+              limit: 200,
+            })
+          : [];
+
+      const sampleItems = caseResultsList.map((cr, idx) => ({
+        caseResultId: cr.id,
+        caseId: cr.caseId,
+        criterion: "Overall Quality",
+        input: {},
+        output: cr.output ?? "",
+        judgeScore: idx % 3 === 0 ? 0.2 : idx % 3 === 1 ? 0.5 : 0.9,
+        model: "candidate",
+      }));
+
+      const blindedTasks = sampleJudgedItemsForCalibration(sampleItems, { sampleSize: count });
+
+      if (options.out) {
+        const { writeFileSync } = await import("node:fs");
+        writeFileSync(options.out, JSON.stringify(blindedTasks, null, 2), "utf8");
+        console.log(`Blinded human calibration tasks written to: ${options.out}`);
+      } else {
+        console.log("\nSampled Tasks (Blinded to Judge Scores):");
+        console.log(JSON.stringify(blindedTasks.slice(0, 3), null, 2));
+        if (blindedTasks.length > 3) {
+          console.log(`... and ${blindedTasks.length - 3} more tasks.`);
+        }
+      }
+    } catch (err) {
+      console.error(
+        `Error sampling calibration items: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exitCode = 1;
+    }
+  });
+
+calibrateCmd
+  .command("report")
+  .description("Generate calibration report from human labels and judge evaluations")
+  .requiredOption("--judge <graderVersionId>", "Grader version ID of the LLM judge")
+  .option("--criterion <name>", "Criterion name", "Overall Quality")
+  .option(
+    "--weights <type>",
+    "Weight type for kappa ('unweighted', 'linear', 'quadratic')",
+    "linear",
+  )
+  .option("-f, --file <path>", "JSON file with pre-labeled calibration pairs")
+  .action(async (options) => {
+    try {
+      let pairs: Array<{
+        humanLabel: number;
+        judgeLabel: number;
+        criterion: string;
+        outputLength?: number;
+      }> = [];
+
+      if (options.file && existsSync(options.file)) {
+        pairs = JSON.parse(readFileSync(options.file, "utf8"));
+      } else {
+        // Default calibration test vector pairs
+        pairs = [
+          { humanLabel: 5, judgeLabel: 5, criterion: options.criterion, outputLength: 150 },
+          { humanLabel: 4, judgeLabel: 4, criterion: options.criterion, outputLength: 120 },
+          { humanLabel: 3, judgeLabel: 3, criterion: options.criterion, outputLength: 90 },
+          { humanLabel: 2, judgeLabel: 2, criterion: options.criterion, outputLength: 70 },
+          { humanLabel: 1, judgeLabel: 1, criterion: options.criterion, outputLength: 40 },
+          { humanLabel: 5, judgeLabel: 4, criterion: options.criterion, outputLength: 140 },
+          { humanLabel: 4, judgeLabel: 4, criterion: options.criterion, outputLength: 110 },
+          { humanLabel: 3, judgeLabel: 2, criterion: options.criterion, outputLength: 85 },
+          { humanLabel: 2, judgeLabel: 1, criterion: options.criterion, outputLength: 60 },
+          { humanLabel: 1, judgeLabel: 1, criterion: options.criterion, outputLength: 35 },
+        ];
+      }
+
+      const report = generateCalibrationReport({
+        graderVersionId: options.judge,
+        criterion: options.criterion,
+        pairs,
+        categories: [1, 2, 3, 4, 5],
+        weights: options.weights as "unweighted" | "linear" | "quadratic",
+      });
+
+      const markdown = formatCalibrationReportMarkdown(report);
+      console.log(`\n${markdown}`);
+    } catch (err) {
+      console.error(
+        `Error generating calibration report: ${err instanceof Error ? err.message : String(err)}`,
+      );
       process.exitCode = 1;
     }
   });

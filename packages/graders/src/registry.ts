@@ -1,3 +1,4 @@
+import type { Provider } from "@evalboard/providers";
 import { getCustomGrader } from "./custom.js";
 import { ContainsGrader } from "./deterministic/contains.js";
 import { ExactGrader } from "./deterministic/exact.js";
@@ -6,6 +7,8 @@ import { LengthConstraintGrader } from "./deterministic/length.js";
 import { NumericGrader } from "./deterministic/numeric.js";
 import { RegexGrader } from "./deterministic/regex.js";
 import { SetMatchGrader } from "./deterministic/set-match.js";
+import { PairwiseJudge } from "./llm/pairwise.js";
+import { RubricJudge } from "./llm/rubric.js";
 import type { Grader } from "./types.js";
 
 export const BUILTIN_DETERMINISTIC_GRADERS = [
@@ -19,11 +22,22 @@ export const BUILTIN_DETERMINISTIC_GRADERS = [
   "length-constraint",
 ] as const;
 
+export const BUILTIN_LLM_GRADERS = ["llm-rubric", "pairwise"] as const;
+
+export const ALL_BUILTIN_GRADERS = [
+  ...BUILTIN_DETERMINISTIC_GRADERS,
+  ...BUILTIN_LLM_GRADERS,
+] as const;
+
 /**
  * Creates a Grader instance given a type and configuration.
- * Dispatches to built-in deterministic graders or registered custom graders.
+ * Dispatches to built-in deterministic graders, LLM judges, or registered custom graders.
  */
-export function createGrader(type: string, config: unknown): Grader {
+export function createGrader(
+  type: string,
+  config: unknown,
+  providerResolver?: (provider: string, model: string) => Provider,
+): Grader {
   switch (type) {
     case "exact":
       return new ExactGrader(config);
@@ -49,6 +63,12 @@ export function createGrader(type: string, config: unknown): Grader {
     case "length-constraint":
       return new LengthConstraintGrader(config);
 
+    case "llm-rubric":
+      return new RubricJudge(config, providerResolver);
+
+    case "pairwise":
+      return new PairwiseJudge(config, providerResolver);
+
     default: {
       const customFactory = getCustomGrader(type);
       if (customFactory) {
@@ -56,7 +76,7 @@ export function createGrader(type: string, config: unknown): Grader {
       }
 
       throw new Error(
-        `Unknown grader type: '${type}'. Built-in deterministic types are: [${BUILTIN_DETERMINISTIC_GRADERS.join(
+        `Unknown grader type: '${type}'. Built-in types are: [${ALL_BUILTIN_GRADERS.join(
           ", ",
         )}]. For custom types, register via 'registerCustomGrader'.`,
       );

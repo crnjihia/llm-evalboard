@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@evalboard/core": "workspace:*",
+    "@evalboard/providers": "workspace:*",
+    "@evalboard/stats": "workspace:*",
     "ajv": "^8.20.0",
     "zod": "^4.6.7"
   },

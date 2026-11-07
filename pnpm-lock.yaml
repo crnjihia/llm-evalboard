@@ -335,6 +335,12 @@ importers:
       '@evalboard/core':
         specifier: workspace:*
         version: link:../core
+      '@evalboard/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@evalboard/stats':
+        specifier: workspace:*
+        version: link:../stats
       ajv:
         specifier: ^8.20.0
         version: 8.20.0

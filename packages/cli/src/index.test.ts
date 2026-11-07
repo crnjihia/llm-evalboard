@@ -102,4 +102,26 @@ describe("cli prompt and dataset commands", () => {
       logSpy.mockRestore();
     }
   });
+
+  it("generates judge calibration report via calibrate report", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "calibrate",
+        "report",
+        "--judge",
+        "mock-judge-v1",
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(logged).toContain("# Judge Calibration Report: Overall Quality");
+      expect(logged).toContain("Agreement Statistics");
+      expect(logged).toContain("Cohen's Kappa (κ)");
+      expect(logged).toContain("Confusion Matrix");
+      expect(logged).toContain("Length Bias Analysis");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });
