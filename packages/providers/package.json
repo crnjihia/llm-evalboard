@@ -16,7 +16,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@evalboard/core": "workspace:*"
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@evalboard/core": "workspace:*",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",

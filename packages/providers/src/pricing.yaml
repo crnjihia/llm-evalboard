@@ -1,0 +1,84 @@
+# llm-evalboard Model Pricing Table
+# Prices in USD per 1 Million tokens ($/1M)
+# Updated: 2026-03-01
+# Sources: Anthropic Pricing Documentation, OpenRouter Pricing API
+
+models:
+  # Anthropic Claude 3.5 Sonnet
+  claude-3-5-sonnet-20241022:
+    inputPerMillion: 3.00
+    outputPerMillion: 15.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2024-10-22"
+
+  claude-3-5-sonnet-latest:
+    inputPerMillion: 3.00
+    outputPerMillion: 15.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2024-10-22"
+
+  # Anthropic Claude 3.7 Sonnet
+  claude-3-7-sonnet-20250219:
+    inputPerMillion: 3.00
+    outputPerMillion: 15.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2025-02-19"
+
+  claude-3-7-sonnet-latest:
+    inputPerMillion: 3.00
+    outputPerMillion: 15.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2025-02-19"
+
+  # Anthropic Claude 3.5 Haiku
+  claude-3-5-haiku-20241022:
+    inputPerMillion: 0.80
+    outputPerMillion: 4.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2024-10-22"
+
+  claude-3-5-haiku-latest:
+    inputPerMillion: 0.80
+    outputPerMillion: 4.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2024-10-22"
+
+  # Anthropic Claude 3 Opus
+  claude-3-opus-20240229:
+    inputPerMillion: 15.00
+    outputPerMillion: 75.00
+    source: "https://docs.anthropic.com/en/docs/about-claude/pricing"
+    updatedAt: "2024-03-01"
+
+  # OpenRouter Hosted Models
+  meta-llama/llama-3.3-70b-instruct:
+    inputPerMillion: 0.12
+    outputPerMillion: 0.30
+    source: "https://openrouter.ai/models/meta-llama/llama-3.3-70b-instruct"
+    updatedAt: "2024-12-06"
+
+  meta-llama/llama-3.1-8b-instruct:
+    inputPerMillion: 0.055
+    outputPerMillion: 0.055
+    source: "https://openrouter.ai/models/meta-llama/llama-3.1-8b-instruct"
+    updatedAt: "2024-07-23"
+
+  deepseek/deepseek-r1:
+    inputPerMillion: 0.55
+    outputPerMillion: 2.19
+    source: "https://openrouter.ai/models/deepseek/deepseek-r1"
+    updatedAt: "2025-01-20"
+
+  # Local Models default
+  ollama/default:
+    inputPerMillion: 0.00
+    outputPerMillion: 0.00
+    source: "local"
+    updatedAt: "2026-01-01"
+
+  # Mock provider default
+  mock/default:
+    inputPerMillion: 0.00
+    outputPerMillion: 0.00
+    source: "internal"
+    updatedAt: "2026-01-01"
