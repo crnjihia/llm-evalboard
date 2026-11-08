@@ -181,3 +181,4 @@ delta: 0.04
 repeats: 3
 ```
 *Effect: Passes if the new model achieves `NO MEANINGFUL DIFFERENCE` within 4%, enabling massive cost savings without quality loss.*
+

@@ -177,3 +177,4 @@ Key architectural decisions are documented in detail within `docs/decisions/`:
 - [ADR-007: Security Red-Teaming Taxonomy and Scoring](./decisions/ADR-007-security-red-teaming-taxonomy.md)
 - [ADR-008: Promptfoo Migration and Shadow Execution Strategy](./decisions/ADR-008-promptfoo-migration-and-compatibility.md)
 - [ADR-009: CI Merge Gating and Observability Integrations](./decisions/ADR-009-ci-merge-gating-and-observability.md)
+

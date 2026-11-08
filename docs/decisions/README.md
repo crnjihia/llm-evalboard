@@ -17,3 +17,4 @@ This directory documents key architectural decisions made in `llm-evalboard`. Ea
 | [ADR-007](./ADR-007-security-red-teaming-taxonomy.md) | Security Red-Teaming Taxonomy and Scoring | **Accepted** | 2026-11-08 | Standardized red-teaming taxonomy on OWASP Top 10 for LLMs, multi-turn adaptive attacker loop, and Wilson score ASR with 95% CIs. |
 | [ADR-008](./ADR-008-promptfoo-migration-and-compatibility.md) | Promptfoo Migration, Compatibility, & Shadow Execution | **Accepted** | 2026-11-08 | Built bidirectional Promptfoo configuration importer/exporter and Shadow Execution Mode for detecting single-run "False Passes". |
 | [ADR-009](./ADR-009-ci-merge-gating-and-observability.md) | CI Merge Gating and Observability Integrations | **Accepted** | 2026-11-08 | Implemented GitHub Action CI runner, PR sticky comment bot with ASCII forest plots, merge gatekeeper, and OpenTelemetry / Langfuse export. |
+
