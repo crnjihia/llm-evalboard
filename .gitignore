@@ -33,3 +33,8 @@ pgdata/
 test-results/
 playwright-report/
 
+# Release artifacts
+*.tgz
+releases/
+dist-releases/
+
