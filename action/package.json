@@ -16,7 +16,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@evalboard/core": "workspace:*"
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.1",
+    "@evalboard/core": "workspace:*",
+    "@evalboard/graders": "workspace:*",
+    "@evalboard/providers": "workspace:*",
+    "@evalboard/stats": "workspace:*",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",

@@ -1,0 +1,135 @@
+import type { ComparisonVerdict } from "@evalboard/stats";
+import { generateAsciiForestPlot } from "./forest-plot.js";
+import type { ComparisonSummaryData, SliceComparisonData } from "./types.js";
+
+export const STICKY_COMMENT_MARKER = "<!-- evalboard-pr-comment -->";
+
+function formatVerdictBadge(verdict: ComparisonVerdict): string {
+  switch (verdict) {
+    case "BETTER":
+      return "🟢 **`[+] BETTER`** — Statistically significant improvement";
+    case "NO MEANINGFUL DIFFERENCE":
+      return "⚪ **`[=] NO MEANINGFUL DIFFERENCE`** — Performance equivalent within tolerance margin";
+    case "WORSE":
+      return "🔴 **`[-] WORSE`** — Statistically significant regression detected";
+    default:
+      return "🟡 **`[?] INCONCLUSIVE`** — Insufficient statistical power or high variance";
+  }
+}
+
+function formatVerdictAlert(verdict: ComparisonVerdict, reasoning: string): string {
+  switch (verdict) {
+    case "BETTER":
+      return `> [!NOTE]\n> **Verdict: BETTER**\n> ${reasoning}`;
+    case "NO MEANINGFUL DIFFERENCE":
+      return `> [!NOTE]\n> **Verdict: NO MEANINGFUL DIFFERENCE**\n> ${reasoning}`;
+    case "WORSE":
+      return `> [!CAUTION]\n> **Verdict: WORSE (Regression)**\n> ${reasoning}\n> *This pull request is blocked by merge gating policy.*`;
+    default:
+      return `> [!IMPORTANT]\n> **Verdict: INCONCLUSIVE**\n> ${reasoning}`;
+  }
+}
+
+function formatSliceTable(slices: SliceComparisonData[]): string {
+  if (slices.length === 0) return "";
+
+  const rows = slices.map((s) => {
+    const diff =
+      s.meanDifference >= 0
+        ? `+${(s.meanDifference * 100).toFixed(1)}%`
+        : `${(s.meanDifference * 100).toFixed(1)}%`;
+    const icon =
+      s.verdict === "BETTER"
+        ? "[+]"
+        : s.verdict === "WORSE"
+          ? "[-]"
+          : s.verdict === "NO MEANINGFUL DIFFERENCE"
+            ? "[=]"
+            : "[?]";
+    return `| \`${s.tag}\` | ${s.n} | ${(s.baselineScore * 100).toFixed(1)}% | ${(s.candidateScore * 100).toFixed(1)}% | ${diff} | \`${icon} ${s.verdict}\` |`;
+  });
+
+  return [
+    "### 🔍 Slice Analysis",
+    "| Slice / Tag | Cases | Baseline | Candidate | Difference | Verdict |",
+    "|:---|---:|---:|---:|---:|:---|",
+    ...rows,
+  ].join("\n");
+}
+
+/**
+ * Generates the complete GitHub Pull Request markdown comment.
+ */
+export function generatePrCommentMarkdown(data: ComparisonSummaryData): string {
+  const forestPlot = generateAsciiForestPlot(
+    data.meanDifference,
+    data.ciLower,
+    data.ciUpper,
+    data.delta,
+  );
+
+  const diffStr =
+    data.meanDifference >= 0
+      ? `+${(data.meanDifference * 100).toFixed(2)}%`
+      : `${(data.meanDifference * 100).toFixed(2)}%`;
+  const ciStr = `[${(data.ciLower * 100).toFixed(2)}%, ${(data.ciUpper * 100).toFixed(2)}%]`;
+
+  const costDiff =
+    data.candidateCostUsd !== undefined && data.baselineCostUsd !== undefined
+      ? (data.candidateCostUsd - data.baselineCostUsd).toFixed(5)
+      : undefined;
+
+  const latencyDiff =
+    data.candidateLatencyMs !== undefined && data.baselineLatencyMs !== undefined
+      ? `${(data.candidateLatencyMs - data.baselineLatencyMs).toFixed(0)} ms`
+      : undefined;
+
+  const sliceSection = data.slices ? formatSliceTable(data.slices) : "";
+
+  let powerSection = "";
+  if (data.verdict === "INCONCLUSIVE" && data.estimatedAdditionalCases) {
+    powerSection = [
+      "### ⚡ Statistical Power Recommendation",
+      `The confidence interval spans across the decision boundary. Based on observed variance ($s$), an estimated **${data.estimatedAdditionalCases} additional test cases** are required to achieve 80% statistical power.`,
+    ].join("\n");
+  }
+
+  const sections = [
+    STICKY_COMMENT_MARKER,
+    `## 🧪 Evaluation Report: \`${data.suiteName}\``,
+    "",
+    formatVerdictBadge(data.verdict),
+    "",
+    formatVerdictAlert(data.verdict, data.reasoning),
+    "",
+    "### 📊 Effect Size & Confidence Interval (Forest Plot)",
+    "```text",
+    forestPlot,
+    "```",
+    "",
+    "### 📈 Core Metrics Comparison",
+    `| Metric | Baseline (\`${data.baselineName}\`) | Candidate (\`${data.candidateName}\`) | Differential (Δ) |`,
+    "|:---|---:|---:|---:|",
+    `| **Score (Mean)** | ${(data.baselineScore * 100).toFixed(2)}% | ${(data.candidateScore * 100).toFixed(2)}% | **${diffStr}** (95% CI: ${ciStr}) |`,
+    ...(data.candidateLatencyMs !== undefined && data.baselineLatencyMs !== undefined
+      ? [
+          `| **Latency (ms)** | ${data.baselineLatencyMs.toFixed(0)} ms | ${data.candidateLatencyMs.toFixed(0)} ms | ${latencyDiff} |`,
+        ]
+      : []),
+    ...(data.candidateCostUsd !== undefined && data.baselineCostUsd !== undefined
+      ? [
+          `| **Cost (USD)** | $${data.baselineCostUsd.toFixed(5)} | $${data.candidateCostUsd.toFixed(5)} | $${costDiff} |`,
+        ]
+      : []),
+    `| **Evaluated Pairs** | ${data.nPairs} | ${data.nPairs} | Tolerance: $\\pm$${(data.delta * 100).toFixed(1)}% |`,
+    "",
+    sliceSection,
+    "",
+    powerSection,
+    "",
+    "---",
+    `*Generated by [llm-evalboard](https://github.com/llm-evalboard/llm-evalboard) • Commit: \`${data.commitSha ? data.commitSha.slice(0, 7) : "HEAD"}\`*`,
+  ];
+
+  return sections.filter((s) => s.length > 0).join("\n");
+}

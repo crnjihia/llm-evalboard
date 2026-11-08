@@ -1,14 +1,62 @@
 name: "llm-evalboard"
-description: "Statistically honest LLM evaluation in your pull requests"
+description: "Statistically honest LLM evaluation and merge gating in your pull requests"
+author: "llm-evalboard"
+branding:
+  icon: "check-circle"
+  color: "blue"
+
 inputs:
   config:
-    description: "Path to evalboard suite configuration"
+    description: "Path to evalboard suite configuration file (e.g. evalboard.yaml)"
     required: true
-  baseline-ref:
-    description: "Git ref for baseline comparison"
+  github-token:
+    description: "GitHub token for posting sticky PR comments (e.g. secrets.GITHUB_TOKEN)"
     required: false
-    default: "main"
+  fail-on-regression:
+    description: "Fail the workflow step if verdict is WORSE"
+    required: false
+    default: "true"
+  fail-on-inconclusive:
+    description: "Fail the workflow step if verdict is INCONCLUSIVE (insufficient sample size)"
+    required: false
+    default: "false"
+  delta:
+    description: "Smallest effect size of interest (default: 0.03)"
+    required: false
+    default: "0.03"
+  repeats:
+    description: "Number of stochastic repeats per test case (default: from suite or 1)"
+    required: false
+  baseline-ref:
+    description: "Git ref or model baseline override"
+    required: false
+  otel-endpoint:
+    description: "OpenTelemetry collector OTLP/HTTP endpoint (e.g. http://localhost:4318/v1/traces)"
+    required: false
+  langfuse-host:
+    description: "Langfuse host URL (e.g. https://cloud.langfuse.com)"
+    required: false
+  langfuse-public-key:
+    description: "Langfuse public API key"
+    required: false
+  langfuse-secret-key:
+    description: "Langfuse secret API key"
+    required: false
+
+outputs:
+  verdict:
+    description: "4-way comparison verdict (BETTER, WORSE, NO MEANINGFUL DIFFERENCE, INCONCLUSIVE)"
+  effect-size:
+    description: "Point estimate of mean difference (d)"
+  ci-lower:
+    description: "Lower bound of 95% confidence interval"
+  ci-upper:
+    description: "Upper bound of 95% confidence interval"
+  passed:
+    description: "Whether the pull request passed the merge gate"
+  report-markdown:
+    description: "Full markdown report generated for the PR"
+
 runs:
   using: "node20"
   main: "dist/index.js"
-
