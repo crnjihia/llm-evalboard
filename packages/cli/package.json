@@ -9,18 +9,8 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "keywords": [
-    "llm",
-    "evaluation",
-    "ai",
-    "stats",
-    "prompt-engineering",
-    "promptfoo",
-    "ci-cd"
-  ],
+  "files": ["dist"],
+  "keywords": ["llm", "evaluation", "ai", "stats", "prompt-engineering", "promptfoo", "ci-cd"],
   "exports": {
     ".": {
       "import": "./dist/index.js",
