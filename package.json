@@ -5,6 +5,7 @@
   "description": "Statistically Honest LLM Evaluation Framework and Dashboard",
   "packageManager": "pnpm@12.9.1",
   "scripts": {
+    "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
