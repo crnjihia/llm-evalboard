@@ -35,6 +35,6 @@ playwright-report/
 
 # Release artifacts
 *.tgz
-releases/
-dist-releases/
+/releases/
+/dist-releases/
 
