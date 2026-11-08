@@ -168,4 +168,46 @@ describe("cli prompt and dataset commands", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("lists red-team attack categories via redteam categories", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync(["node", "evalboard", "redteam", "categories"]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("RED-TEAM ATTACK TAXONOMY CATEGORIES");
+      expect(logged).toContain("PROMPT_INJECTION");
+      expect(logged).toContain("JAILBREAK");
+      expect(logged).toContain("PII_EXTRACTION");
+      expect(logged).toContain("OVER_REFUSAL_PROBE");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("executes red-team assessment against mock-safe target", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "redteam",
+        "run",
+        "--model",
+        "mock-safe",
+        "--categories",
+        "PROMPT_INJECTION,OVER_REFUSAL_PROBE",
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("RED-TEAM SECURITY ASSESSMENT REPORT (mock-safe)");
+      expect(logged).toContain("Overall Attack Success Rate (ASR): 0.0%");
+      expect(logged).toContain("Security Score:                    100.0%");
+      expect(logged).toContain("CATEGORY BREAKDOWN:");
+      expect(logged).toContain("PROMPT_INJECTION");
+      expect(logged).toContain("OVER_REFUSAL_PROBE");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
 });

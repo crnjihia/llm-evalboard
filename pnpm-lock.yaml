@@ -298,6 +298,9 @@ importers:
       '@evalboard/providers':
         specifier: workspace:*
         version: link:../providers
+      '@evalboard/redteam':
+        specifier: workspace:*
+        version: link:../redteam
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -458,6 +461,18 @@ importers:
       '@evalboard/core':
         specifier: workspace:*
         version: link:../core
+      '@evalboard/db':
+        specifier: workspace:*
+        version: link:../db
+      '@evalboard/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@evalboard/stats':
+        specifier: workspace:*
+        version: link:../stats
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.13.9

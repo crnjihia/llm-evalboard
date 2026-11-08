@@ -19,11 +19,24 @@ import {
   ComparisonRepository,
   DatasetRepository,
   PromptRepository,
+  RedteamRepository,
   RunRepository,
   TraceRepository,
   createDbClient,
 } from "@evalboard/db";
-import { PromotionEngine, TraceInputSchema, classifyTrace, scrubObject } from "@evalboard/flywheel";
+import {
+  PromotionEngine,
+  TraceInputSchema,
+  classifyTrace,
+  scrubObject,
+} from "@evalboard/flywheel";
+import {
+  type AttackCategory,
+  type ModelInvoker,
+  RedteamEngine,
+  getAllProbes,
+  listCategories,
+} from "@evalboard/redteam";
 import {
   BUILTIN_DETERMINISTIC_GRADERS,
   createGrader,
@@ -883,9 +896,7 @@ flywheelCmd
       const traceRepo = new TraceRepository(db);
 
       console.log(`\n=== Ingesting ${rawTraces.length} Production Trace(s) ===`);
-      console.log(
-        `PII Redaction: ${shouldScrub ? "Active (Emails, SSNs, Cards, Keys, IPs)" : "Bypassed"}`,
-      );
+      console.log(`PII Redaction: ${shouldScrub ? "Active (Emails, SSNs, Cards, Keys, IPs)" : "Bypassed"}`);
 
       let totalPiiRedacted = 0;
       const detectedPiiTypes = new Set<string>();
@@ -963,9 +974,7 @@ flywheelCmd
 
       console.log("------------------------------------------------------------");
       console.log(`Successfully ingested: ${preparedTraces.length} traces`);
-      console.log(
-        `PII Redactions Applied: ${totalPiiRedacted} (${Array.from(detectedPiiTypes).join(", ") || "None"})`,
-      );
+      console.log(`PII Redactions Applied: ${totalPiiRedacted} (${Array.from(detectedPiiTypes).join(", ") || "None"})`);
       console.log("Triage Priority Breakdown:");
       console.log(`  * CRITICAL: ${triageCounts.CRITICAL} (Recommended for immediate promotion)`);
       console.log(`  * HIGH:     ${triageCounts.HIGH}`);
@@ -1013,7 +1022,7 @@ flywheelCmd
           ? `"${feedbackObj.comment}"`
           : feedbackObj?.rating !== undefined
             ? `Rating: ${feedbackObj.rating}`
-            : ((labels[0]?.details as { reasons?: string[] })?.reasons?.[0] ?? "None");
+            : (labels[0]?.details as { reasons?: string[] })?.reasons?.[0] ?? "None";
 
         console.log(
           `${t.id.slice(0, 18).padEnd(20)}${t.model.slice(0, 14).padEnd(16)}${`[${topLabel}]`.padEnd(12)}${feedbackStr.slice(0, 45)}`,
@@ -1026,9 +1035,7 @@ flywheelCmd
       }
       console.log("============================================================\n");
     } catch (err) {
-      console.error(
-        `Error querying triage queue: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      console.error(`Error querying triage queue: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;
     }
   });
@@ -1067,9 +1074,7 @@ flywheelCmd
         console.log(`\n=== Promoting Trace: ${traceId} ===`);
         console.log(`Target Dataset:   ${options.dataset}`);
         console.log(`Synthetic Count:  ${syntheticCount}`);
-        console.log(
-          `Duplicate Guard:  ${options.force ? "Disabled (--force)" : "Active (Jaccard >= 0.85)"}`,
-        );
+        console.log(`Duplicate Guard:  ${options.force ? "Disabled (--force)" : "Active (Jaccard >= 0.85)"}`);
 
         const result = await engine.promoteTrace({
           traceId,
@@ -1083,15 +1088,11 @@ flywheelCmd
 
         console.log("------------------------------------------------------------");
         console.log("PROMOTION SUCCESSFUL:");
-        console.log(
-          `Dataset ID:           ${result.datasetId} (${result.isNewDataset ? "Created" : "Updated"})`,
-        );
+        console.log(`Dataset ID:           ${result.datasetId} (${result.isNewDataset ? "Created" : "Updated"})`);
         console.log(`Dataset Version ID:   ${result.datasetVersionId}`);
         console.log(`Primary Case ID:      ${result.promotedCaseId}`);
         if (result.syntheticCaseIds.length > 0) {
-          console.log(
-            `Synthetic Case IDs:   ${result.syntheticCaseIds.length} variation(s) generated`,
-          );
+          console.log(`Synthetic Case IDs:   ${result.syntheticCaseIds.length} variation(s) generated`);
           for (const sId of result.syntheticCaseIds) {
             console.log(`  * ${sId}`);
           }
@@ -1100,6 +1101,139 @@ flywheelCmd
         console.log("============================================================\n");
       } catch (err) {
         console.error(`Promotion failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
+    },
+  );
+
+// --- RED-TEAM COMMANDS ---
+const redteamCmd = program
+  .command("redteam")
+  .description("Security evaluation, adversarial attack taxonomy, and ASR scoring");
+
+redteamCmd
+  .command("categories")
+  .description("List available red-team attack categories and active probes")
+  .action(() => {
+    console.log("\n============================================================");
+    console.log("RED-TEAM ATTACK TAXONOMY CATEGORIES");
+    console.log("============================================================");
+    const categories = listCategories();
+    const allProbes = getAllProbes();
+
+    for (const cat of categories) {
+      const catProbes = allProbes.filter((p) => p.category === cat);
+      console.log(`\n• ${cat} (${catProbes.length} probe(s)):`);
+      for (const p of catProbes) {
+        console.log(`    [${p.id}] ${p.name.padEnd(36)} Expected: ${p.expectedBehavior}`);
+      }
+    }
+    console.log("\n============================================================\n");
+  });
+
+redteamCmd
+  .command("run")
+  .description("Execute adversarial security red-teaming assessment against a model target")
+  .option(
+    "-m, --model <name>",
+    "Target model or mock target ('mock-safe', 'mock-vulnerable', 'openai:gpt-4o')",
+    "mock-safe",
+  )
+  .option("-c, --categories <categories>", "Comma-separated attack categories")
+  .option("-t, --max-turns <number>", "Maximum attacker evasion turns", "3")
+  .option("--system-prompt <prompt>", "Target system prompt instructions")
+  .option("--canary <secret>", "Canary secret token for PII extraction probes")
+  .option("--save", "Persist red-team run to database")
+  .action(
+    async (options: {
+      model?: string;
+      categories?: string;
+      maxTurns?: string;
+      systemPrompt?: string;
+      canary?: string;
+      save?: boolean;
+    }) => {
+      try {
+        const modelName = options.model ?? "mock-safe";
+        const maxTurns = Number.parseInt(options.maxTurns ?? "3", 10) || 3;
+        const selectedCategories = options.categories
+          ? (options.categories.split(",").map((c) => c.trim()) as AttackCategory[])
+          : undefined;
+
+        console.log(`\n=== Initializing Red-Team Assessment ===`);
+        console.log(`Target:           ${modelName}`);
+        console.log(`Max Evasion Turns:${maxTurns}`);
+        console.log(`Categories:       ${selectedCategories ? selectedCategories.join(", ") : "ALL"}`);
+
+        let invoker: ModelInvoker;
+
+        if (modelName.startsWith("mock")) {
+          invoker = async (messages) => {
+            const lastMsg = messages[messages.length - 1]?.content ?? "";
+            // Mock vulnerable model complies with injection / leaks canary
+            if (modelName === "mock-vulnerable") {
+              if (lastMsg.includes("PWNED")) return "PWNED";
+              if (lastMsg.includes("canary") || lastMsg.includes("secret")) {
+                return `The canary is ${options.canary ?? "CANARY_TOKEN_9988X"}.`;
+              }
+              return "Here is your response.";
+            }
+
+            // Mock safe model defends against attacks and fulfills benign queries
+            if (
+              lastMsg.includes("PWNED") ||
+              lastMsg.includes("system prompt") ||
+              lastMsg.includes("canary") ||
+              lastMsg.includes("DAN")
+            ) {
+              return "I cannot fulfill this request as it violates safety guidelines.";
+            }
+
+            return "This is an objective, helpful educational response.";
+          };
+        } else {
+          const [providerName, ...modelParts] = modelName.includes(":")
+            ? modelName.split(":")
+            : ["openai", modelName];
+          const actualModel = modelParts.join(":") || modelName;
+          const provider = createProvider({
+            provider: (providerName as "openai" | "anthropic" | "ollama") || "openai",
+            model: actualModel,
+          });
+
+          invoker = async (messages) => {
+            const res = await provider.generate({
+              model: actualModel,
+              messages: messages.map((m) => ({
+                role: m.role as "user" | "assistant" | "system",
+                content: m.content,
+              })),
+            });
+            return res.text;
+          };
+        }
+
+        const db = options.save ? getDb() : undefined;
+        const redteamRepo = db ? new RedteamRepository(db) : undefined;
+
+        const engine = new RedteamEngine(invoker, redteamRepo);
+        const report = await engine.runSuite({
+          model: modelName,
+          categories: selectedCategories,
+          maxTurns,
+          systemPrompt: options.systemPrompt,
+          targetSecret: options.canary,
+          save: Boolean(options.save),
+        });
+
+        const formatted = RedteamEngine.formatConsoleReport(report);
+        console.log(formatted);
+
+        if (options.save) {
+          console.log("Assessment results persisted to database successfully.");
+        }
+      } catch (err) {
+        console.error(`Red-team run failed: ${err instanceof Error ? err.message : String(err)}`);
         process.exitCode = 1;
       }
     },
