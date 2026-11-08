@@ -295,6 +295,9 @@ importers:
       '@evalboard/graders':
         specifier: workspace:*
         version: link:../graders
+      '@evalboard/promptfoo-compat':
+        specifier: workspace:*
+        version: link:../promptfoo-compat
       '@evalboard/providers':
         specifier: workspace:*
         version: link:../providers
@@ -423,6 +426,21 @@ importers:
       '@evalboard/core':
         specifier: workspace:*
         version: link:../core
+      '@evalboard/graders':
+        specifier: workspace:*
+        version: link:../graders
+      '@evalboard/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@evalboard/stats':
+        specifier: workspace:*
+        version: link:../stats
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.13.9

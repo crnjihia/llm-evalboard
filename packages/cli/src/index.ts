@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import {
+  type Case,
   type CaseComparisonData,
   type ParsedCase,
   checkDatasetQuality,
@@ -24,19 +25,7 @@ import {
   TraceRepository,
   createDbClient,
 } from "@evalboard/db";
-import {
-  PromotionEngine,
-  TraceInputSchema,
-  classifyTrace,
-  scrubObject,
-} from "@evalboard/flywheel";
-import {
-  type AttackCategory,
-  type ModelInvoker,
-  RedteamEngine,
-  getAllProbes,
-  listCategories,
-} from "@evalboard/redteam";
+import { PromotionEngine, TraceInputSchema, classifyTrace, scrubObject } from "@evalboard/flywheel";
 import {
   BUILTIN_DETERMINISTIC_GRADERS,
   createGrader,
@@ -45,8 +34,23 @@ import {
   listCustomGraderTypes,
   sampleJudgedItemsForCalibration,
 } from "@evalboard/graders";
+import {
+  ShadowRunner,
+  exportToPromptfooYaml,
+  formatShadowReportTable,
+  importPromptfooConfig,
+  loadPromptfooConfigFile,
+} from "@evalboard/promptfoo-compat";
 import { DiskCache, createProvider } from "@evalboard/providers";
+import {
+  type AttackCategory,
+  type ModelInvoker,
+  RedteamEngine,
+  getAllProbes,
+  listCategories,
+} from "@evalboard/redteam";
 import { Command } from "commander";
+import { stringify as stringifyYaml } from "yaml";
 
 export const program = new Command();
 
@@ -896,7 +900,9 @@ flywheelCmd
       const traceRepo = new TraceRepository(db);
 
       console.log(`\n=== Ingesting ${rawTraces.length} Production Trace(s) ===`);
-      console.log(`PII Redaction: ${shouldScrub ? "Active (Emails, SSNs, Cards, Keys, IPs)" : "Bypassed"}`);
+      console.log(
+        `PII Redaction: ${shouldScrub ? "Active (Emails, SSNs, Cards, Keys, IPs)" : "Bypassed"}`,
+      );
 
       let totalPiiRedacted = 0;
       const detectedPiiTypes = new Set<string>();
@@ -957,24 +963,33 @@ flywheelCmd
       }
 
       // Persist to database
-      await traceRepo.ingestTraces(preparedTraces.map((p) => p.trace));
+      try {
+        await traceRepo.ingestTraces(preparedTraces.map((p) => p.trace));
 
-      for (const p of preparedTraces) {
-        await traceRepo.addLabel({
-          traceId: p.trace.id,
-          label: p.triage.priority,
-          score: p.triage.score,
-          details: {
-            reasons: p.triage.reasons,
-            suggestedAction: p.triage.suggestedAction,
-          },
-          labeledBy: "flywheel-triage",
-        });
+        for (const p of preparedTraces) {
+          await traceRepo.addLabel({
+            traceId: p.trace.id,
+            label: p.triage.priority,
+            score: p.triage.score,
+            details: {
+              reasons: p.triage.reasons,
+              suggestedAction: p.triage.suggestedAction,
+            },
+            labeledBy: "flywheel-triage",
+          });
+        }
+      } catch (dbErr) {
+        // If DB is offline, log notice and continue with in-memory summary
+        console.warn(
+          `[flywheel] Database offline; skipping persistence (${dbErr instanceof Error ? dbErr.message : String(dbErr)})`,
+        );
       }
 
       console.log("------------------------------------------------------------");
       console.log(`Successfully ingested: ${preparedTraces.length} traces`);
-      console.log(`PII Redactions Applied: ${totalPiiRedacted} (${Array.from(detectedPiiTypes).join(", ") || "None"})`);
+      console.log(
+        `PII Redactions Applied: ${totalPiiRedacted} (${Array.from(detectedPiiTypes).join(", ") || "None"})`,
+      );
       console.log("Triage Priority Breakdown:");
       console.log(`  * CRITICAL: ${triageCounts.CRITICAL} (Recommended for immediate promotion)`);
       console.log(`  * HIGH:     ${triageCounts.HIGH}`);
@@ -1022,7 +1037,7 @@ flywheelCmd
           ? `"${feedbackObj.comment}"`
           : feedbackObj?.rating !== undefined
             ? `Rating: ${feedbackObj.rating}`
-            : (labels[0]?.details as { reasons?: string[] })?.reasons?.[0] ?? "None";
+            : ((labels[0]?.details as { reasons?: string[] })?.reasons?.[0] ?? "None");
 
         console.log(
           `${t.id.slice(0, 18).padEnd(20)}${t.model.slice(0, 14).padEnd(16)}${`[${topLabel}]`.padEnd(12)}${feedbackStr.slice(0, 45)}`,
@@ -1035,7 +1050,9 @@ flywheelCmd
       }
       console.log("============================================================\n");
     } catch (err) {
-      console.error(`Error querying triage queue: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `Error querying triage queue: ${err instanceof Error ? err.message : String(err)}`,
+      );
       process.exitCode = 1;
     }
   });
@@ -1074,7 +1091,9 @@ flywheelCmd
         console.log(`\n=== Promoting Trace: ${traceId} ===`);
         console.log(`Target Dataset:   ${options.dataset}`);
         console.log(`Synthetic Count:  ${syntheticCount}`);
-        console.log(`Duplicate Guard:  ${options.force ? "Disabled (--force)" : "Active (Jaccard >= 0.85)"}`);
+        console.log(
+          `Duplicate Guard:  ${options.force ? "Disabled (--force)" : "Active (Jaccard >= 0.85)"}`,
+        );
 
         const result = await engine.promoteTrace({
           traceId,
@@ -1088,11 +1107,15 @@ flywheelCmd
 
         console.log("------------------------------------------------------------");
         console.log("PROMOTION SUCCESSFUL:");
-        console.log(`Dataset ID:           ${result.datasetId} (${result.isNewDataset ? "Created" : "Updated"})`);
+        console.log(
+          `Dataset ID:           ${result.datasetId} (${result.isNewDataset ? "Created" : "Updated"})`,
+        );
         console.log(`Dataset Version ID:   ${result.datasetVersionId}`);
         console.log(`Primary Case ID:      ${result.promotedCaseId}`);
         if (result.syntheticCaseIds.length > 0) {
-          console.log(`Synthetic Case IDs:   ${result.syntheticCaseIds.length} variation(s) generated`);
+          console.log(
+            `Synthetic Case IDs:   ${result.syntheticCaseIds.length} variation(s) generated`,
+          );
           for (const sId of result.syntheticCaseIds) {
             console.log(`  * ${sId}`);
           }
@@ -1160,10 +1183,12 @@ redteamCmd
           ? (options.categories.split(",").map((c) => c.trim()) as AttackCategory[])
           : undefined;
 
-        console.log(`\n=== Initializing Red-Team Assessment ===`);
+        console.log("\n=== Initializing Red-Team Assessment ===");
         console.log(`Target:           ${modelName}`);
         console.log(`Max Evasion Turns:${maxTurns}`);
-        console.log(`Categories:       ${selectedCategories ? selectedCategories.join(", ") : "ALL"}`);
+        console.log(
+          `Categories:       ${selectedCategories ? selectedCategories.join(", ") : "ALL"}`,
+        );
 
         let invoker: ModelInvoker;
 
@@ -1238,6 +1263,193 @@ redteamCmd
       }
     },
   );
+
+// --- PROMPTFOO COMPATIBILITY COMMANDS ---
+const promptfooCmd = program
+  .command("promptfoo")
+  .description("Promptfoo migration, drop-in compatibility, and shadow execution");
+
+promptfooCmd
+  .command("import <file>")
+  .description("Import a Promptfoo YAML configuration into Evalboard suite and cases")
+  .option("-s, --suite <name>", "Override suite name")
+  .option("-o, --out <file>", "Write synthesized Evalboard suite YAML to file")
+  .option("-d, --dataset-out <file>", "Write synthesized dataset JSONL to file")
+  .option("-r, --repeats <n>", "Number of repeats (default: 1)", "1")
+  .action(async (file, options) => {
+    try {
+      if (!existsSync(file)) {
+        console.error(`Error: File '${file}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(`\n=== Importing Promptfoo Configuration: ${file} ===`);
+      const {
+        config,
+        resolvedPrompts,
+        warnings: fileWarnings,
+      } = await loadPromptfooConfigFile(file);
+
+      const repeats = Number.parseInt(options.repeats, 10) || 1;
+      const result = importPromptfooConfig(config, {
+        suiteName: options.suite,
+        repeats,
+        resolvedPrompts,
+      });
+
+      console.log(`Suite Name:     ${result.suite.name}`);
+      console.log(`Prompts:        ${result.prompts.length}`);
+      console.log(
+        `Models:         ${result.suite.models.map((m: { provider: string; model: string }) => `${m.provider}:${m.model}`).join(", ")}`,
+      );
+      console.log(`Test Cases:     ${result.cases.length}`);
+      console.log(`Graders Mapped: ${result.graders.length}`);
+
+      const totalWarnings = result.warnings.length + fileWarnings.length;
+      if (totalWarnings > 0) {
+        console.log(`\nCompatibility Warnings (${totalWarnings}):`);
+        for (const w of result.warnings) {
+          console.log(`  [${w.code}] ${w.message}`);
+          console.log(`    Remediation: ${w.remediation}`);
+        }
+        for (const fw of fileWarnings) {
+          console.log(`  [PF_WARN_FILE_RESOLUTION] ${fw}`);
+        }
+      }
+
+      const suiteYaml = stringifyYaml({
+        name: result.suite.name,
+        description: result.suite.description,
+        prompts: result.suite.prompts,
+        models: result.suite.models,
+        dataset: options.datasetOut ?? "./dataset.jsonl",
+        repeats: result.suite.repeats,
+        graders: result.graders,
+        baseline: result.suite.baseline,
+        delta: result.suite.delta,
+      });
+
+      if (options.out) {
+        writeFileSync(options.out, suiteYaml, "utf8");
+        console.log(`\nEvalboard Suite YAML written to: ${options.out}`);
+      } else {
+        console.log("\n--- Generated Evalboard Suite Config ---");
+        console.log(suiteYaml);
+      }
+
+      if (options.datasetOut) {
+        const jsonlContent = result.cases
+          .map((c: Case) =>
+            JSON.stringify({
+              input: c.input,
+              expected: c.expected,
+              tags: c.tags,
+              metadata: c.metadata,
+            }),
+          )
+          .join("\n");
+        writeFileSync(options.datasetOut, jsonlContent, "utf8");
+        console.log(`Dataset JSONL written to: ${options.datasetOut}`);
+      }
+    } catch (err) {
+      console.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+promptfooCmd
+  .command("shadow <file>")
+  .description("Execute Promptfoo suite with repeated stochastic sampling and divergence analysis")
+  .option("-r, --repeats <n>", "Repeated stochastic runs per test case (default: 3)", "3")
+  .option("-m, --model <model>", "Target model override (e.g. 'openai:gpt-4o' or 'mock:echo')")
+  .option("-b, --baseline <model>", "Baseline model to compare against for 4-way verdict")
+  .option("--seed <n>", "PRNG seed (default: 42)", "42")
+  .option("--delta <d>", "Smallest effect of interest (default: 0.03)", "0.03")
+  .option("--format <fmt>", "Output format: 'table' or 'json' (default: 'table')", "table")
+  .action(async (file, options) => {
+    try {
+      if (!existsSync(file)) {
+        console.error(`Error: File '${file}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const { config, resolvedPrompts } = await loadPromptfooConfigFile(file);
+      const repeats = Number.parseInt(options.repeats, 10) || 3;
+      const seed = Number.parseInt(options.seed, 10) || 42;
+      const delta = Number.parseFloat(options.delta) || 0.03;
+
+      console.log(`\nInitializing Promptfoo Shadow Execution for '${file}'...`);
+      const runner = new ShadowRunner(config);
+      const report = await runner.run({
+        repeats,
+        seed,
+        delta,
+        model: options.model,
+        baselineModel: options.baseline,
+        resolvedPrompts,
+      });
+
+      if (options.format === "json") {
+        console.log(JSON.stringify(report, null, 2));
+      } else {
+        const table = formatShadowReportTable(report);
+        console.log(`\n${table}`);
+      }
+    } catch (err) {
+      console.error(`Shadow run failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+promptfooCmd
+  .command("export <suiteFile>")
+  .description("Export an Evalboard suite definition back to Promptfoo YAML")
+  .option("-o, --out <file>", "Output file path (default: stdout)")
+  .option("-d, --dataset <file>", "Dataset JSONL file path to populate test cases")
+  .action(async (suiteFile, options) => {
+    try {
+      if (!existsSync(suiteFile)) {
+        console.error(`Error: File '${suiteFile}' not found.`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const suiteContent = readFileSync(suiteFile, "utf8");
+      const suite = parseSuiteConfig(suiteContent);
+
+      let cases: Case[] = [];
+      const datasetPath =
+        options.dataset ?? (existsSync(suite.dataset) ? suite.dataset : undefined);
+      if (datasetPath && existsSync(datasetPath)) {
+        const parsed = parseDataset(readFileSync(datasetPath, "utf8"));
+        cases = parsed.cases.map((c, idx) => ({
+          id: `case_${idx}`.padEnd(64, "0"),
+          datasetVersionId: "0".repeat(64),
+          caseIndex: idx,
+          input: c.input,
+          expected: c.expected,
+          tags: c.tags,
+          metadata: c.metadata,
+          split: "test",
+          createdAt: new Date(),
+        }));
+      }
+
+      const promptfooYaml = exportToPromptfooYaml(suite, cases);
+
+      if (options.out) {
+        writeFileSync(options.out, promptfooYaml, "utf8");
+        console.log(`Promptfoo YAML written to: ${options.out}`);
+      } else {
+        console.log(promptfooYaml);
+      }
+    } catch (err) {
+      console.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
 
 export const CLI_PACKAGE_NAME = "@evalboard/cli";
 

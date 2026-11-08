@@ -24,6 +24,7 @@
     "@evalboard/flywheel": "workspace:*",
     "@evalboard/graders": "workspace:*",
     "@evalboard/providers": "workspace:*",
+    "@evalboard/promptfoo-compat": "workspace:*",
     "@evalboard/redteam": "workspace:*",
     "commander": "^13.1.0"
   },

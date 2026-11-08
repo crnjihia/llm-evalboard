@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -30,14 +30,40 @@ export function loadPricingTable(customYamlPath?: string): PricingTable {
   if (customYamlPath) {
     yamlContent = readFileSync(customYamlPath, "utf8");
   } else {
-    try {
-      const currentDir = dirname(fileURLToPath(import.meta.url));
-      const defaultPath = join(currentDir, "pricing.yaml");
-      yamlContent = readFileSync(defaultPath, "utf8");
-    } catch {
-      // Fallback path if bundled or in test root
-      const fallbackPath = join(process.cwd(), "packages/providers/src/pricing.yaml");
-      yamlContent = readFileSync(fallbackPath, "utf8");
+    const currentDir = dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      join(currentDir, "pricing.yaml"),
+      join(currentDir, "../src/pricing.yaml"),
+      join(currentDir, "../../providers/src/pricing.yaml"),
+      join(process.cwd(), "packages/providers/src/pricing.yaml"),
+      join(process.cwd(), "../providers/src/pricing.yaml"),
+      join(process.cwd(), "src/pricing.yaml"),
+    ];
+
+    let foundPath: string | undefined;
+    for (const c of candidates) {
+      if (existsSync(c)) {
+        foundPath = c;
+        break;
+      }
+    }
+
+    if (foundPath) {
+      yamlContent = readFileSync(foundPath, "utf8");
+    } else {
+      const fallbackTable: PricingTable = {
+        models: {
+          "gpt-4o": { inputPerMillion: 2.5, outputPerMillion: 10 },
+          "gpt-4o-mini": { inputPerMillion: 0.15, outputPerMillion: 0.6 },
+          "claude-3-5-sonnet": { inputPerMillion: 3, outputPerMillion: 15 },
+          "claude-3-7-sonnet": { inputPerMillion: 3, outputPerMillion: 15 },
+          echo: { inputPerMillion: 0, outputPerMillion: 0 },
+        },
+      };
+      if (!customYamlPath) {
+        cachedPricingTable = fallbackTable;
+      }
+      return fallbackTable;
     }
   }
 

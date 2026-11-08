@@ -77,4 +77,3 @@ export interface RunRedteamOptions {
   projectId?: string;
   targetPromptVersionId?: string;
 }
-

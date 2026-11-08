@@ -210,4 +210,145 @@ describe("cli prompt and dataset commands", () => {
       logSpy.mockRestore();
     }
   });
+
+  it("imports promptfooconfig into Evalboard suite and dataset files via promptfoo import", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "evalboard-cli-pf-import-"));
+    const pfConfigPath = join(tempDir, "promptfooconfig.yaml");
+    const suiteOutPath = join(tempDir, "evalboard-suite.yaml");
+    const datasetOutPath = join(tempDir, "dataset.jsonl");
+
+    const pfYaml = `
+description: "CLI Import Test"
+prompts:
+  - "Hello {{name}}"
+providers:
+  - "mock:echo"
+tests:
+  - vars:
+      name: "Alice"
+    assert:
+      - type: equals
+        value: "Hello Alice"
+`;
+    writeFileSync(pfConfigPath, pfYaml, "utf8");
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "promptfoo",
+        "import",
+        pfConfigPath,
+        "--suite",
+        "Imported CLI Suite",
+        "--out",
+        suiteOutPath,
+        "--dataset-out",
+        datasetOutPath,
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("=== Importing Promptfoo Configuration:");
+      expect(logged).toContain("Suite Name:     Imported CLI Suite");
+      expect(logged).toContain("Prompts:        1");
+      expect(logged).toContain("Test Cases:     1");
+      expect(logged).toContain("Evalboard Suite YAML written to:");
+      expect(logged).toContain("Dataset JSONL written to:");
+    } finally {
+      logSpy.mockRestore();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("runs promptfoo shadow execution command with repeats and formats table", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "evalboard-cli-pf-shadow-"));
+    const pfConfigPath = join(tempDir, "promptfooconfig.yaml");
+
+    const pfYaml = `
+prompts:
+  - "{{text}}"
+providers:
+  - "mock:echo"
+tests:
+  - vars:
+      text: "hello world"
+    assert:
+      - type: contains
+        value: "world"
+`;
+    writeFileSync(pfConfigPath, pfYaml, "utf8");
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "promptfoo",
+        "shadow",
+        pfConfigPath,
+        "--repeats",
+        "2",
+        "--model",
+        "mock:echo",
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("Initializing Promptfoo Shadow Execution");
+      expect(logged).toContain("EVALBOARD PROMPTFOO SHADOW RUN EXECUTION REPORT");
+      expect(logged).toContain("Promptfoo Pass Rate (Turn 1):");
+      expect(logged).toContain("Evalboard Pass Rate (R=2):");
+      expect(logged).toContain("DIVERGENCE & STOCHASTIC INSTABILITY ANALYSIS:");
+    } finally {
+      logSpy.mockRestore();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("exports Evalboard suite back to Promptfoo YAML via promptfoo export", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "evalboard-cli-pf-export-"));
+    const suitePath = join(tempDir, "suite.yaml");
+    const datasetPath = join(tempDir, "dataset.jsonl");
+    const outPfPath = join(tempDir, "exported-promptfoo.yaml");
+
+    const datasetContent = `{"input": {"val": "test"}, "expected": "test"}\n`;
+    writeFileSync(datasetPath, datasetContent, "utf8");
+
+    const suiteContent = `
+name: Export Test Suite
+prompts:
+  - "Echo {{val}}"
+models:
+  - provider: mock
+    model: echo
+dataset: "${datasetPath.replace(/\\/g, "/")}"
+baseline:
+  prompt: "Echo {{val}}"
+  model: echo
+graders:
+  - type: exact
+    config:
+      trim: true
+`;
+    writeFileSync(suitePath, suiteContent, "utf8");
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync([
+        "node",
+        "evalboard",
+        "promptfoo",
+        "export",
+        suitePath,
+        "--out",
+        outPfPath,
+      ]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("Promptfoo YAML written to:");
+    } finally {
+      logSpy.mockRestore();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

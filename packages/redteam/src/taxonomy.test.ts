@@ -46,4 +46,3 @@ describe("Red-team Attack Taxonomy", () => {
     expect(orProbes.every((p) => p.category === "OVER_REFUSAL_PROBE")).toBe(true);
   });
 });
-

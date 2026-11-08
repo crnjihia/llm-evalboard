@@ -101,4 +101,3 @@ describe("Red-team Scoring & Confidence Intervals", () => {
     expect(report.categoryBreakdown.JAILBREAK.asr).toBe(0);
   });
 });
-
