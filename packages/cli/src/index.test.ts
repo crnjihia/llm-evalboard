@@ -135,4 +135,37 @@ describe("cli prompt and dataset commands", () => {
     expect(optionFlags).toContain("-d, --delta <number>");
     expect(optionFlags).toContain("-s, --seed <number>");
   });
+
+  it("registers flywheel command with ingest, triage, and promote subcommands", () => {
+    const flywheelCmd = program.commands.find((c) => c.name() === "flywheel");
+    expect(flywheelCmd).toBeDefined();
+    const subNames = flywheelCmd?.commands.map((c) => c.name());
+    expect(subNames).toContain("ingest");
+    expect(subNames).toContain("triage");
+    expect(subNames).toContain("promote");
+  });
+
+  it("runs flywheel ingest on a fixture with PII and negative feedback", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "evalboard-flywheel-test-"));
+    const traceFile = join(tempDir, "production-traces.jsonl");
+
+    const tracesContent = `{"id": "tr-cli-001", "input": {"query": "User john.doe@example.com reported failure"}, "output": "Charged 4532-0151-1283-0366", "model": "gpt-4o", "feedback": {"rating": -1, "comment": "Wrong amount billed"}}`;
+    writeFileSync(traceFile, tracesContent, "utf8");
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await program.parseAsync(["node", "evalboard", "flywheel", "ingest", traceFile]);
+      const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+
+      expect(logged).toContain("=== Ingesting 1 Production Trace(s) ===");
+      expect(logged).toContain("PII Redaction: Active");
+      expect(logged).toContain("Successfully ingested: 1 traces");
+      expect(logged).toContain("PII Redactions Applied: 2 (EMAIL, CREDIT_CARD)");
+      expect(logged).toContain("Triage Priority Breakdown:");
+      expect(logged).toContain("HIGH:     1");
+    } finally {
+      logSpy.mockRestore();
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,15 +1,6 @@
-import {
-  AlertCircle,
-  HelpCircle,
-  ShieldAlert,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertCircle, HelpCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 
-export type JudgeTrustLevel =
-  | "TRUSTED"
-  | "USE_WITH_CAUTION"
-  | "NOT_TRUSTED"
-  | "UNCALIBRATED";
+export type JudgeTrustLevel = "TRUSTED" | "USE_WITH_CAUTION" | "NOT_TRUSTED" | "UNCALIBRATED";
 
 interface JudgeTrustBadgeProps {
   level: JudgeTrustLevel | string;
@@ -17,11 +8,7 @@ interface JudgeTrustBadgeProps {
   className?: string;
 }
 
-export function JudgeTrustBadge({
-  level,
-  kappa,
-  className = "",
-}: JudgeTrustBadgeProps) {
+export function JudgeTrustBadge({ level, kappa, className = "" }: JudgeTrustBadgeProps) {
   const kappaStr = kappa !== undefined ? ` (κ = ${kappa.toFixed(2)})` : "";
 
   switch (level) {
@@ -57,8 +44,6 @@ export function JudgeTrustBadge({
           <span>NOT TRUSTED{kappaStr}</span>
         </span>
       );
-
-    case "UNCALIBRATED":
     default:
       return (
         <span
@@ -71,4 +56,3 @@ export function JudgeTrustBadge({
       );
   }
 }
-

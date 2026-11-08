@@ -289,6 +289,9 @@ importers:
       '@evalboard/db':
         specifier: workspace:*
         version: link:../db
+      '@evalboard/flywheel':
+        specifier: workspace:*
+        version: link:../flywheel
       '@evalboard/graders':
         specifier: workspace:*
         version: link:../graders
@@ -367,6 +370,12 @@ importers:
       '@evalboard/core':
         specifier: workspace:*
         version: link:../core
+      '@evalboard/db':
+        specifier: workspace:*
+        version: link:../db
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.13.9

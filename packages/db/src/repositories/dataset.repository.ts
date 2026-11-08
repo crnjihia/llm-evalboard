@@ -118,6 +118,13 @@ export class DatasetRepository {
     });
   }
 
+  async getLatestVersion(datasetId: string) {
+    return this.db.query.datasetVersions.findFirst({
+      where: (dv, { eq }) => eq(dv.datasetId, datasetId),
+      orderBy: (dv, { desc }) => [desc(dv.createdAt)],
+    });
+  }
+
   async getCases(versionId: string) {
     return this.db.query.cases.findMany({
       where: (c, { eq }) => eq(c.datasetVersionId, versionId),

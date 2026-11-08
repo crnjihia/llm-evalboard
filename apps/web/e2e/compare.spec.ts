@@ -25,7 +25,9 @@ test.describe("Phase 9: Compare View E2E Smoke Test", () => {
     await expect(worseBadge).toContainText("WORSE");
     await expect(worseBadge.locator("svg")).toBeVisible();
 
-    const noDiffBadge = page.locator('span[aria-label="Verdict: No meaningful difference"]').first();
+    const noDiffBadge = page
+      .locator('span[aria-label="Verdict: No meaningful difference"]')
+      .first();
     await expect(noDiffBadge).toBeVisible();
     await expect(noDiffBadge).toContainText("NO MEANINGFUL DIFFERENCE");
     await expect(noDiffBadge.locator("svg")).toBeVisible();
@@ -50,4 +52,3 @@ test.describe("Phase 9: Compare View E2E Smoke Test", () => {
     await expect(judgeBadge).toBeVisible();
   });
 });
-

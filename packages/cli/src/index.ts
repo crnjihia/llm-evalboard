@@ -20,8 +20,10 @@ import {
   DatasetRepository,
   PromptRepository,
   RunRepository,
+  TraceRepository,
   createDbClient,
 } from "@evalboard/db";
+import { PromotionEngine, TraceInputSchema, classifyTrace, scrubObject } from "@evalboard/flywheel";
 import {
   BUILTIN_DETERMINISTIC_GRADERS,
   createGrader,
@@ -844,6 +846,264 @@ program
       process.exitCode = 1;
     }
   });
+
+// --- FLYWHEEL COMMANDS ---
+const flywheelCmd = program
+  .command("flywheel")
+  .description("Production-to-test flywheel & trace promotion");
+
+flywheelCmd
+  .command("ingest <file>")
+  .description("Ingest production traces with automatic PII scrubbing and triage classification")
+  .option("--no-scrub", "Disable automatic PII scrubbing")
+  .action(async (file: string, options: { scrub?: boolean }) => {
+    try {
+      if (!existsSync(file)) {
+        console.error(`Trace file not found: ${file}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const content = readFileSync(file, "utf8");
+      let rawTraces: unknown[] = [];
+
+      if (file.endsWith(".jsonl")) {
+        rawTraces = content
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0)
+          .map((l) => JSON.parse(l));
+      } else {
+        const parsed = JSON.parse(content);
+        rawTraces = Array.isArray(parsed) ? parsed : [parsed];
+      }
+
+      const shouldScrub = options.scrub !== false;
+      const db = getDb();
+      const traceRepo = new TraceRepository(db);
+
+      console.log(`\n=== Ingesting ${rawTraces.length} Production Trace(s) ===`);
+      console.log(
+        `PII Redaction: ${shouldScrub ? "Active (Emails, SSNs, Cards, Keys, IPs)" : "Bypassed"}`,
+      );
+
+      let totalPiiRedacted = 0;
+      const detectedPiiTypes = new Set<string>();
+      const triageCounts: Record<string, number> = {
+        CRITICAL: 0,
+        HIGH: 0,
+        MEDIUM: 0,
+        LOW: 0,
+      };
+
+      const preparedTraces = [];
+
+      for (const item of rawTraces) {
+        const parsedTrace = TraceInputSchema.parse(item);
+        let scrubbedInput = parsedTrace.input;
+        let scrubbedOutput = parsedTrace.output;
+        let scrubbedMeta = parsedTrace.metadata;
+
+        if (shouldScrub) {
+          const inRes = scrubObject(scrubbedInput);
+          scrubbedInput = inRes.redacted;
+          totalPiiRedacted += inRes.totalRedactions;
+          for (const t of inRes.detectedTypes) detectedPiiTypes.add(t);
+
+          const outRes = scrubObject(scrubbedOutput);
+          scrubbedOutput = outRes.redacted;
+          totalPiiRedacted += outRes.totalRedactions;
+          for (const t of outRes.detectedTypes) detectedPiiTypes.add(t);
+
+          if (scrubbedMeta) {
+            const metaRes = scrubObject(scrubbedMeta);
+            scrubbedMeta = metaRes.redacted;
+            totalPiiRedacted += metaRes.totalRedactions;
+            for (const t of metaRes.detectedTypes) detectedPiiTypes.add(t);
+          }
+        }
+
+        const triage = classifyTrace({
+          id: parsedTrace.id,
+          output: scrubbedOutput,
+          feedback: parsedTrace.feedback,
+          metadata: scrubbedMeta,
+        });
+
+        triageCounts[triage.priority] = (triageCounts[triage.priority] ?? 0) + 1;
+
+        preparedTraces.push({
+          trace: {
+            ...parsedTrace,
+            input: scrubbedInput,
+            output: scrubbedOutput,
+            metadata: scrubbedMeta,
+            redacted: shouldScrub,
+            timestamp: parsedTrace.timestamp ? new Date(parsedTrace.timestamp) : new Date(),
+          },
+          triage,
+        });
+      }
+
+      // Persist to database
+      await traceRepo.ingestTraces(preparedTraces.map((p) => p.trace));
+
+      for (const p of preparedTraces) {
+        await traceRepo.addLabel({
+          traceId: p.trace.id,
+          label: p.triage.priority,
+          score: p.triage.score,
+          details: {
+            reasons: p.triage.reasons,
+            suggestedAction: p.triage.suggestedAction,
+          },
+          labeledBy: "flywheel-triage",
+        });
+      }
+
+      console.log("------------------------------------------------------------");
+      console.log(`Successfully ingested: ${preparedTraces.length} traces`);
+      console.log(
+        `PII Redactions Applied: ${totalPiiRedacted} (${Array.from(detectedPiiTypes).join(", ") || "None"})`,
+      );
+      console.log("Triage Priority Breakdown:");
+      console.log(`  * CRITICAL: ${triageCounts.CRITICAL} (Recommended for immediate promotion)`);
+      console.log(`  * HIGH:     ${triageCounts.HIGH}`);
+      console.log(`  * MEDIUM:   ${triageCounts.MEDIUM}`);
+      console.log(`  * LOW:      ${triageCounts.LOW}`);
+      console.log("============================================================\n");
+    } catch (err) {
+      console.error(`Error ingesting traces: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+flywheelCmd
+  .command("triage")
+  .description("List and inspect triaged production traces flagged for review or promotion")
+  .option("-p, --priority <priority>", "Filter by triage priority (CRITICAL, HIGH, MEDIUM, LOW)")
+  .option("-l, --limit <limit>", "Maximum number of traces to list", "20")
+  .action(async (options: { priority?: string; limit?: string }) => {
+    try {
+      const db = getDb();
+      const traceRepo = new TraceRepository(db);
+      const limit = Number.parseInt(options.limit ?? "20", 10) || 20;
+
+      const tracesList = await traceRepo.listTraces({ limit });
+
+      console.log("\n============================================================");
+      console.log("PRODUCTION TRACE TRIAGE QUEUE");
+      console.log("============================================================");
+      console.log(
+        `${"Trace ID".padEnd(20)}${"Model".padEnd(16)}${"Priority".padEnd(12)}${"Feedback / Reasons"}`,
+      );
+      console.log("------------------------------------------------------------");
+
+      let count = 0;
+      for (const t of tracesList) {
+        const labels = await traceRepo.getLabels(t.id);
+        const topLabel = labels[0]?.label ?? "UNLABELED";
+
+        if (options.priority && topLabel !== options.priority.toUpperCase()) {
+          continue;
+        }
+
+        const feedbackObj = t.feedback as { comment?: string; rating?: number } | null;
+        const feedbackStr = feedbackObj?.comment
+          ? `"${feedbackObj.comment}"`
+          : feedbackObj?.rating !== undefined
+            ? `Rating: ${feedbackObj.rating}`
+            : ((labels[0]?.details as { reasons?: string[] })?.reasons?.[0] ?? "None");
+
+        console.log(
+          `${t.id.slice(0, 18).padEnd(20)}${t.model.slice(0, 14).padEnd(16)}${`[${topLabel}]`.padEnd(12)}${feedbackStr.slice(0, 45)}`,
+        );
+        count++;
+      }
+
+      if (count === 0) {
+        console.log("No traces found matching the specified filter criteria.");
+      }
+      console.log("============================================================\n");
+    } catch (err) {
+      console.error(
+        `Error querying triage queue: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exitCode = 1;
+    }
+  });
+
+flywheelCmd
+  .command("promote <traceId>")
+  .description("Promote a production trace into a content-addressed test dataset version")
+  .requiredOption("-d, --dataset <name>", "Target dataset name")
+  .option("-e, --expected <output>", "Ground truth expected output (defaults to model output)")
+  .option("-s, --synthetic <count>", "Number of synthetic variations to generate", "0")
+  .option("--seed <number>", "Random seed for synthetic variations", "42")
+  .option("--force", "Bypass near-duplicate similarity warning")
+  .option("--tags <tags>", "Comma-separated extra tags")
+  .action(
+    async (
+      traceId: string,
+      options: {
+        dataset: string;
+        expected?: string;
+        synthetic?: string;
+        seed?: string;
+        force?: boolean;
+        tags?: string;
+      },
+    ) => {
+      try {
+        const db = getDb();
+        const traceRepo = new TraceRepository(db);
+        const datasetRepo = new DatasetRepository(db);
+        const engine = new PromotionEngine(traceRepo, datasetRepo);
+
+        const syntheticCount = Number.parseInt(options.synthetic ?? "0", 10) || 0;
+        const seed = Number.parseInt(options.seed ?? "42", 10) || 42;
+        const extraTags = options.tags ? options.tags.split(",").map((t) => t.trim()) : [];
+
+        console.log(`\n=== Promoting Trace: ${traceId} ===`);
+        console.log(`Target Dataset:   ${options.dataset}`);
+        console.log(`Synthetic Count:  ${syntheticCount}`);
+        console.log(
+          `Duplicate Guard:  ${options.force ? "Disabled (--force)" : "Active (Jaccard >= 0.85)"}`,
+        );
+
+        const result = await engine.promoteTrace({
+          traceId,
+          datasetName: options.dataset,
+          expectedOutput: options.expected,
+          syntheticCount,
+          seed,
+          force: Boolean(options.force),
+          extraTags,
+        });
+
+        console.log("------------------------------------------------------------");
+        console.log("PROMOTION SUCCESSFUL:");
+        console.log(
+          `Dataset ID:           ${result.datasetId} (${result.isNewDataset ? "Created" : "Updated"})`,
+        );
+        console.log(`Dataset Version ID:   ${result.datasetVersionId}`);
+        console.log(`Primary Case ID:      ${result.promotedCaseId}`);
+        if (result.syntheticCaseIds.length > 0) {
+          console.log(
+            `Synthetic Case IDs:   ${result.syntheticCaseIds.length} variation(s) generated`,
+          );
+          for (const sId of result.syntheticCaseIds) {
+            console.log(`  * ${sId}`);
+          }
+        }
+        console.log(`Total Cases in Set:   ${result.totalCasesInVersion}`);
+        console.log("============================================================\n");
+      } catch (err) {
+        console.error(`Promotion failed: ${err instanceof Error ? err.message : String(err)}`);
+        process.exitCode = 1;
+      }
+    },
+  );
 
 export const CLI_PACKAGE_NAME = "@evalboard/cli";
 

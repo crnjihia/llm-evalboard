@@ -21,6 +21,7 @@
   "dependencies": {
     "@evalboard/core": "workspace:*",
     "@evalboard/db": "workspace:*",
+    "@evalboard/flywheel": "workspace:*",
     "@evalboard/graders": "workspace:*",
     "@evalboard/providers": "workspace:*",
     "commander": "^13.1.0"
